@@ -4253,8 +4253,8 @@ function saveState() {
   } catch(e) {
     try {
       const toSave = {
-        trees:     state.trees.map(t => ({...t, photos:[]})),
-        fields:    state.fields.map(f => ({...f, photos:[]})),
+        trees:     state.trees,
+        fields:    state.fields,
         tasks:     state.tasks, inventory: state.inventory,
         finance:   state.finance, calendar: state.calendar,
         diary:     state.diary,  farmName:  state.farmName,
@@ -4473,11 +4473,11 @@ async function syncToFirebase() {
     saveState();
 
     // Step 2 — Push merged local data to Firebase
+    // Photos are Cloudinary URLs (tiny strings) — safe to sync
     showSaveIndicator('🔥 Pushing to Firebase...');
-    const stripPhotos = items => (items||[]).map(item => ({...item, photos:[]}));
     await fbWrite('meta',      { farmName: state.farmName || 'My Farm', version: '2.0.0', lastSync: new Date().toISOString() });
-    await fbWrite('trees',     stripPhotos(state.trees));
-    await fbWrite('fields',    stripPhotos(state.fields));
+    await fbWrite('trees',     state.trees);
+    await fbWrite('fields',    state.fields);
     await fbWrite('tasks',     state.tasks);
     await fbWrite('inventory', state.inventory);
     await fbWrite('finance',   state.finance);
@@ -4518,24 +4518,13 @@ async function loadFromFirebase() {
       updateFarmNameDisplay();
     }
 
-    // Load all sections
+    // Load all sections — photos are Cloudinary URLs, safe to load directly
     const sections = ['trees','fields','tasks','inventory','finance','diary','calendar'];
-    const photoSections = new Set(['trees','fields']);
     let loaded = 0;
     for (const section of sections) {
       const data = await fbRead(section);
       if (data && Array.isArray(data) && data.length > 0) {
-        if (photoSections.has(section)) {
-          // Firebase strips photos to save space — preserve local photos when merging
-          const localById = {};
-          (state[section] || []).forEach(item => { localById[String(item.id)] = item; });
-          state[section] = data.map(remote => {
-            const local = localById[String(remote.id)];
-            return { ...remote, photos: (local && local.photos && local.photos.length) ? local.photos : (remote.photos || []) };
-          });
-        } else {
-          state[section] = data;
-        }
+        state[section] = data;
         loaded++;
         console.log('✅ Loaded', section, ':', data.length, 'records');
       }
