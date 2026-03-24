@@ -706,67 +706,120 @@
       </div>
 
       <!-- ===== FINANCE REPORTS ===== -->
-      <div id="page-reports" class="hidden">
-        <div class="section-header">
-          <h2 class="section-title">Finance Reports</h2>
+      <div id="page-reports" class="hidden" style="background:linear-gradient(160deg,#f0f7ee 0%,#fafaf8 40%,#e8f3fb 100%);min-height:100vh;margin:-28px;padding:28px;">
+        <div class="section-header" style="margin-bottom:20px;">
+          <div>
+            <h2 class="section-title" style="font-size:1.3rem;">📊 Finance Reports</h2>
+            <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">Farm financial overview</div>
+          </div>
           <button class="btn btn-outline" onclick="navigate('finance')">← Entries</button>
         </div>
+
+        <!-- Row 1: Top 3 summary -->
         <div class="grid-3 mb-4">
-          <div class="card">
-            <div class="card-title">Total Income</div>
+          <div class="card" style="border-top:3px solid var(--green);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:10px;right:12px;font-size:2rem;opacity:0.12;">💰</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="font-size:1.3rem;">💰</span>
+              <div class="card-title" style="margin:0;">Total Income</div>
+            </div>
             <div class="card-value" style="color:var(--green)" id="total-income">₹0</div>
+            <div class="card-sub">All income sources</div>
           </div>
-          <div class="card">
-            <div class="card-title">Total Expenses</div>
+          <div class="card" style="border-top:3px solid var(--red);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:10px;right:12px;font-size:2rem;opacity:0.12;">📤</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="font-size:1.3rem;">📤</span>
+              <div class="card-title" style="margin:0;">Total Expenses</div>
+            </div>
             <div class="card-value" style="color:var(--red)" id="total-expense">₹0</div>
+            <div class="card-sub">All expenditure</div>
           </div>
-          <div class="card">
-            <div class="card-title">Net Profit</div>
+          <div class="card" style="border-top:3px solid var(--sky);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:10px;right:12px;font-size:2rem;opacity:0.12;">📈</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+              <span style="font-size:1.3rem;">📈</span>
+              <div class="card-title" style="margin:0;">Net Profit</div>
+            </div>
             <div class="card-value" id="total-profit">₹0</div>
+            <div class="card-sub">Income minus expenses</div>
           </div>
         </div>
+
+        <!-- Row 2: 4 category cards -->
         <div class="grid-4 mb-4" style="margin-bottom:16px;">
-          <div class="card" style="border-left:3px solid var(--soil);">
-            <div class="card-title">Capital Expenditure</div>
-            <div class="card-value" style="color:var(--soil)" id="total-capital">₹0</div>
+          <div class="card" style="border-left:4px solid var(--soil);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:8px;right:10px;font-size:1.8rem;opacity:0.13;">🏗️</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <span style="font-size:1.1rem;">🏗️</span>
+              <div class="card-title" style="margin:0;">Capital</div>
+            </div>
+            <div class="card-value" style="color:var(--soil);font-size:1.4rem;" id="total-capital">₹0</div>
             <div class="card-sub">Long-term investments & assets</div>
           </div>
-          <div class="card" style="border-left:3px solid var(--sky);">
-            <div class="card-title">Maintenance Expenditure</div>
-            <div class="card-value" style="color:var(--sky)" id="total-maintenance">₹0</div>
+          <div class="card" style="border-left:4px solid var(--sky);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:8px;right:10px;font-size:1.8rem;opacity:0.13;">🔧</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <span style="font-size:1.1rem;">🔧</span>
+              <div class="card-title" style="margin:0;">Maintenance</div>
+            </div>
+            <div class="card-value" style="color:var(--sky);font-size:1.4rem;" id="total-maintenance">₹0</div>
             <div class="card-sub">Running & recurring costs</div>
           </div>
-          <div class="card" style="border-left:3px solid var(--amber);">
-            <div class="card-title">Ambur Home</div>
-            <div class="card-value" style="color:var(--amber)" id="total-ambur">₹0</div>
+          <div class="card" style="border-left:4px solid var(--amber);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:8px;right:10px;font-size:1.8rem;opacity:0.13;">🏠</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <span style="font-size:1.1rem;">🏠</span>
+              <div class="card-title" style="margin:0;">Ambur Home</div>
+            </div>
+            <div class="card-value" style="color:var(--amber);font-size:1.4rem;" id="total-ambur">₹0</div>
             <div class="card-sub">Ambur home expenses</div>
           </div>
-          <div class="card" style="border-left:3px solid var(--green);">
-            <div class="card-title">Personal</div>
+          <div class="card" style="border-left:4px solid var(--green);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:8px;right:10px;font-size:1.8rem;opacity:0.13;">👤</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <span style="font-size:1.1rem;">👤</span>
+              <div class="card-title" style="margin:0;">Personal</div>
+            </div>
             <div style="display:flex;align-items:center;gap:8px;">
               <div id="total-personal"
-                style="font-size:1.5rem;font-weight:700;color:var(--green);filter:blur(8px);user-select:none;transition:filter 0.3s;">₹0</div>
+                style="font-size:1.4rem;font-weight:700;color:var(--green);filter:blur(8px);user-select:none;transition:filter 0.3s;">₹0</div>
               <span id="personal-hint" onclick="togglePersonal()" style="cursor:pointer;font-size:1.1rem;user-select:none;" title="Toggle visibility">👁</span>
             </div>
           </div>
         </div>
+
+        <!-- Row 3: Weekly / monthly snapshot -->
         <div class="grid-3 mb-4" style="margin-bottom:16px;">
-          <div class="card" style="border-left:3px solid var(--amber);">
-            <div class="card-title">This Week Expenses</div>
+          <div class="card" style="border-left:4px solid var(--amber);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:8px;right:10px;font-size:1.8rem;opacity:0.13;">📅</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <span style="font-size:1.1rem;">📅</span>
+              <div class="card-title" style="margin:0;">This Week Expenses</div>
+            </div>
             <div class="card-value" style="color:var(--amber)" id="this-week-expenses">₹0</div>
             <div class="card-sub" id="this-week-label">Sun – Sat</div>
           </div>
-          <div class="card" style="border-left:3px solid var(--red);">
-            <div class="card-title">How Much to Pay</div>
+          <div class="card" style="border-left:4px solid var(--red);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:8px;right:10px;font-size:1.8rem;opacity:0.13;">⏳</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <span style="font-size:1.1rem;">⏳</span>
+              <div class="card-title" style="margin:0;">How Much to Pay</div>
+            </div>
             <div class="card-value" style="color:var(--red)" id="week-unpaid">₹0</div>
             <div class="card-sub" id="week-unpaid-label">Unpaid this week</div>
           </div>
-          <div class="card" style="border-left:3px solid var(--sky);">
-            <div class="card-title">This Month Maintenance</div>
+          <div class="card" style="border-left:4px solid var(--sky);position:relative;overflow:hidden;">
+            <div style="position:absolute;top:8px;right:10px;font-size:1.8rem;opacity:0.13;">🔧</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+              <span style="font-size:1.1rem;">🗓️</span>
+              <div class="card-title" style="margin:0;">This Month Maintenance</div>
+            </div>
             <div class="card-value" style="color:var(--sky)" id="month-maintenance">₹0</div>
             <div class="card-sub" id="month-maintenance-label">Current month</div>
           </div>
         </div>
+
         <div id="category-breakdown" style="margin-bottom:16px;"></div>
         <div id="monthly-breakdown" style="margin-bottom:16px;"></div>
         <div id="yearly-chart" style="margin-bottom:16px;"></div>
