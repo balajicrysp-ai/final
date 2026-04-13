@@ -4817,12 +4817,24 @@ async function signInWithGoogle() {
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    await firebaseAuth.signInWithPopup(provider);
+    await firebaseAuth.signInWithRedirect(provider);
   } catch(e) {
     if (loading) loading.style.display = 'none';
     showAuthError('Sign-in failed: ' + (e.message || e));
   }
 }
+
+// Handle redirect result on page load
+firebaseAuth.getRedirectResult().then(result => {
+  if (result && result.user) {
+    // Auth state change handler will pick this up automatically
+    console.log('Redirect sign-in successful:', result.user.email);
+  }
+}).catch(e => {
+  if (e.code !== 'auth/no-current-user') {
+    showAuthError('Sign-in failed: ' + (e.message || e));
+  }
+});
 
 async function signOutGoogle() {
   await firebaseAuth.signOut();
