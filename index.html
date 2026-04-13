@@ -18,6 +18,9 @@
   object-src 'none';
 "/>
 <title>FarmDesk — Farm Management</title>
+<!-- Firebase Auth SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,500;0,700;1,500&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -491,6 +494,42 @@
 
   /* Photo count badge */
   .photo-count { font-size: 0.7rem; color: var(--text-muted); margin-top: 6px; }
+
+  /* ===== GOOGLE AUTH SCREEN ===== */
+  #auth-screen {
+    position: fixed; inset: 0; z-index: 99999;
+    background: linear-gradient(160deg, #1e4d1a 0%, #163912 50%, #0d2409 100%);
+    display: flex; align-items: center; justify-content: center; padding: 24px;
+  }
+  .auth-card {
+    background: #fff; border-radius: 20px; padding: 36px 32px;
+    max-width: 380px; width: 100%; text-align: center;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.4);
+  }
+  .auth-logo { font-size: 3rem; margin-bottom: 8px; }
+  .auth-title { font-family: 'Playfair Display', serif; font-size: 1.6rem; color: #1e4d1a; margin-bottom: 4px; }
+  .auth-sub { font-size: 0.82rem; color: #888; margin-bottom: 28px; }
+  .auth-google-btn {
+    display: flex; align-items: center; justify-content: center; gap: 12px;
+    width: 100%; padding: 13px 20px; border-radius: 12px;
+    border: 1.5px solid #e0e0d8; background: #fff; cursor: pointer;
+    font-family: 'Outfit', sans-serif; font-size: 0.92rem; font-weight: 600;
+    color: #333; transition: all 0.18s; box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  }
+  .auth-google-btn:hover { border-color: #4285f4; box-shadow: 0 4px 16px rgba(66,133,244,0.2); transform: translateY(-1px); }
+  .auth-google-btn:active { transform: translateY(0); }
+  .auth-google-icon { width: 22px; height: 22px; }
+  .auth-error { margin-top: 14px; padding: 10px 14px; background: #fce8e8; border-radius: 8px; font-size: 0.8rem; color: #c0392b; display: none; }
+  .auth-loading { margin-top: 14px; font-size: 0.8rem; color: #888; display: none; }
+  .auth-user-badge {
+    position: fixed; top: 10px; right: 16px; z-index: 1000;
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(255,255,255,0.95); border: 1px solid var(--border);
+    border-radius: 20px; padding: 5px 12px 5px 6px; font-size: 0.75rem;
+    box-shadow: var(--shadow-sm); cursor: pointer;
+  }
+  .auth-user-badge img { width: 24px; height: 24px; border-radius: 50%; }
+  .auth-user-badge:hover { box-shadow: var(--shadow); }
 
   .hidden { display: none !important; }
   .mt-4 { margin-top: 16px; }
@@ -4706,6 +4745,102 @@ const FIREBASE_CONFIG = {
 const FIREBASE_BASE = "https://firestore.googleapis.com/v1/projects/" + FIREBASE_CONFIG.projectId + "/databases/(default)/documents";
 const FIREBASE_API_KEY = FIREBASE_CONFIG.apiKey;
 
+// ============ GOOGLE AUTH ============
+// ⚠️ IMPORTANT: Replace with YOUR Google account email
+const ALLOWED_EMAIL = 'YOUR_EMAIL@gmail.com';
+
+let currentUser = null;
+let authIdToken = null;
+
+// Init Firebase app for Auth only
+const firebaseApp = firebase.initializeApp(FIREBASE_CONFIG);
+const firebaseAuth = firebase.auth();
+
+firebaseAuth.onAuthStateChanged(async (user) => {
+  if (user) {
+    if (user.email !== ALLOWED_EMAIL) {
+      // Wrong account — sign out immediately
+      await firebaseAuth.signOut();
+      showAuthError('❌ Access denied. Only the authorised account can access FarmDesk.');
+      return;
+    }
+    // Authorised user
+    currentUser = user;
+    authIdToken = await user.getIdToken();
+    // Refresh token every 50 mins (tokens expire after 1hr)
+    setInterval(async () => {
+      if (currentUser) authIdToken = await currentUser.getIdToken(true);
+    }, 50 * 60 * 1000);
+    hideAuthScreen(user);
+  } else {
+    currentUser = null;
+    authIdToken = null;
+    showAuthScreen();
+  }
+});
+
+function showAuthScreen() {
+  const s = document.getElementById('auth-screen');
+  if (s) s.style.display = 'flex';
+}
+
+function hideAuthScreen(user) {
+  const s = document.getElementById('auth-screen');
+  if (s) s.style.display = 'none';
+  // Show user badge in top-right corner
+  addUserBadge(user);
+}
+
+function addUserBadge(user) {
+  let badge = document.getElementById('auth-user-badge');
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.id = 'auth-user-badge';
+    badge.className = 'auth-user-badge';
+    badge.title = 'Signed in as ' + user.email;
+    badge.onclick = () => {
+      if (confirm('Sign out of FarmDesk?\n\n' + user.email)) signOutGoogle();
+    };
+    document.body.appendChild(badge);
+  }
+  badge.innerHTML = (user.photoURL
+    ? `<img src="${user.photoURL}" alt="avatar">`
+    : `<span style="font-size:1.1rem;">👤</span>`)
+    + `<span>${user.displayName ? user.displayName.split(' ')[0] : user.email}</span>`;
+}
+
+async function signInWithGoogle() {
+  const loading = document.getElementById('auth-loading');
+  const errEl   = document.getElementById('auth-error');
+  if (loading) loading.style.display = 'block';
+  if (errEl)   errEl.style.display   = 'none';
+  try {
+    const provider = new firebase.auth.GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    await firebaseAuth.signInWithPopup(provider);
+  } catch(e) {
+    if (loading) loading.style.display = 'none';
+    showAuthError('Sign-in failed: ' + (e.message || e));
+  }
+}
+
+async function signOutGoogle() {
+  await firebaseAuth.signOut();
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  if (el) { el.textContent = msg; el.style.display = 'block'; }
+}
+
+// Override fbWrite and fbRead to use Auth token when available
+async function getAuthHeaders() {
+  if (authIdToken) {
+    return { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + authIdToken };
+  }
+  return { 'Content-Type': 'application/json' };
+}
+
 let fbSyncTimer = null;
 let fbLastSync = null;
 let fbSyncPending = false;
@@ -4734,7 +4869,7 @@ async function fbWrite(docId, data) {
     throw new Error(`${docId} payload too large (${sizeKB}KB) — remove photos or reduce data`);
   }
 
-  const url = FIREBASE_BASE + '/farmdesk/' + docId + '?key=' + FIREBASE_API_KEY;
+  const url = FIREBASE_BASE + '/farmdesk/' + docId + (authIdToken ? '' : '?key=' + FIREBASE_API_KEY);
   const body = {
     fields: {
       json:      { stringValue: jsonStr },
@@ -4744,7 +4879,7 @@ async function fbWrite(docId, data) {
   };
   const res = await fetch(url, {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: await getAuthHeaders(),
     body: JSON.stringify(body)
   });
   if (!res.ok) {
@@ -4755,8 +4890,8 @@ async function fbWrite(docId, data) {
 }
 
 async function fbRead(docId) {
-  const url = FIREBASE_BASE + '/farmdesk/' + docId + '?key=' + FIREBASE_API_KEY;
-  const res = await fetch(url);
+  const url = FIREBASE_BASE + '/farmdesk/' + docId + (authIdToken ? '' : '?key=' + FIREBASE_API_KEY);
+  const res = await fetch(url, { headers: await getAuthHeaders() });
   if (!res.ok) return null;
   const doc = await res.json();
   if (!doc.fields) return null;
@@ -5016,6 +5151,31 @@ document.addEventListener('DOMContentLoaded', function() {
      Powered by Claude. Reads full state for context.
      Multi-turn conversation. Renders charts via Chart.js.
 ============================================================ -->
+
+<!-- ============================================================
+     GOOGLE SIGN-IN AUTH SCREEN
+============================================================ -->
+<div id="auth-screen">
+  <div class="auth-card">
+    <div class="auth-logo">🌾</div>
+    <div class="auth-title">FarmDesk</div>
+    <div class="auth-sub">Farm Management · Private &amp; Secure</div>
+    <button class="auth-google-btn" onclick="signInWithGoogle()">
+      <svg class="auth-google-icon" viewBox="0 0 24 24">
+        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/>
+        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+      </svg>
+      Sign in with Google
+    </button>
+    <div class="auth-loading" id="auth-loading">🔐 Signing in...</div>
+    <div class="auth-error" id="auth-error"></div>
+    <div style="margin-top:20px;font-size:0.72rem;color:#bbb;line-height:1.6;">
+      Only authorised accounts can access this farm data.
+    </div>
+  </div>
+</div>
 
 <!-- Floating trigger button -->
 <button id="ai-fab" onclick="toggleAIPanel()"
