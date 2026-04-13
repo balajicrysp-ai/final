@@ -4811,10 +4811,21 @@ async function initFirebaseAuth() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithPopup(_firebaseAuth, provider);
+      // Use redirect on mobile (Safari blocks popups), popup on desktop
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      if (isMobile) {
+        await signInWithRedirect(_firebaseAuth, provider);
+      } else {
+        await signInWithPopup(_firebaseAuth, provider);
+      }
     } catch(e) {
       if (loading) loading.style.display = 'none';
-      showAuthError('Sign-in failed: ' + (e.message || e));
+      // If popup was closed, show a friendly retry message instead of error
+      if (e.code === 'auth/popup-closed-by-user' || e.code === 'auth/cancelled-popup-request') {
+        showAuthError('Sign-in window was closed. Tap the button to try again.');
+      } else {
+        showAuthError('Sign-in failed: ' + (e.message || e));
+      }
     }
   };
 
