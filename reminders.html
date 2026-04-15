@@ -435,14 +435,19 @@ body {
 
     <!-- Voice bar -->
     <div class="voice-bar" id="voice-bar" style="display:none">
-      <button class="voice-btn" id="mic-btn" onclick="startListening()">
-        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="1" width="6" height="9" rx="3"/><path d="M3 8a5 5 0 0010 0M8 13v2M5 15h6" stroke-linecap="round"/></svg>
+      <button class="voice-btn" id="mic-btn" onclick="toggleRecording()">
+        <svg id="mic-icon" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="5" y="1" width="6" height="9" rx="3"/><path d="M3 8a5 5 0 0010 0M8 13v2M5 15h6" stroke-linecap="round"/></svg>
+        <svg id="stop-icon" width="13" height="13" viewBox="0 0 16 16" fill="currentColor" style="display:none"><rect x="3" y="3" width="10" height="10" rx="2"/></svg>
       </button>
       <div class="voice-status">
-        <div id="voice-status-text">Click the mic and say a reminder naturally — e.g. "Remind me to call the bank tomorrow at 3pm, Finance, high priority"</div>
+        <div id="voice-status-text">Tap the mic — speak your reminder naturally, then tap stop. Works on iPad &amp; iPhone.</div>
         <div class="voice-transcript" id="voice-transcript"></div>
+        <div id="voice-no-key" style="display:none;font-size:12px;color:var(--warn);margin-top:3px">⚠ Add your OpenAI API key in Settings to enable voice transcription.</div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="toggleVoice()">Hide</button>
+      <div style="display:flex;flex-direction:column;gap:6px;align-items:flex-end">
+        <div id="voice-timer" style="font-size:12px;color:var(--text3);min-width:32px;text-align:right">0s</div>
+        <button class="btn btn-ghost btn-sm" onclick="toggleVoice()">Hide</button>
+      </div>
     </div>
 
     <!-- Add panel -->
@@ -572,6 +577,10 @@ body {
           </div>
           <div class="settings-section" style="margin-top:16px">
             <div class="settings-label">API Keys (stored locally)</div>
+            <div class="field" style="margin-bottom:10px">
+              <div class="field-label">OpenAI API Key — for voice transcription (iPad/iPhone)</div>
+              <input type="password" id="cfg-openai" placeholder="sk-…" />
+            </div>
             <div class="field" style="margin-bottom:10px">
               <div class="field-label">SendGrid API Key</div>
               <input type="password" id="cfg-sendgrid" placeholder="SG.xxxxxxxxxx" />
@@ -845,61 +854,198 @@ function setPriFilter(v, el) {
   render();
 }
 
-// ─── Voice ────────────────────────────────────────────────
-let recognition = null;
+// ─── Voice — MediaRecorder + Whisper (works on iOS Safari) ──
+let mediaRecorder = null;
+let audioChunks = [];
+let recordingTimer = null;
+let recordingSeconds = 0;
+let isRecording = false;
+
 function toggleVoice() {
   const bar = document.getElementById('voice-bar');
-  bar.style.display = bar.style.display==='none' ? 'flex' : 'none';
-}
-function startListening() {
-  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-    toast('Voice not supported in this browser. Use Chrome.','error'); return;
-  }
-  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-  recognition = new SR();
-  recognition.lang = 'en-GB';
-  recognition.interimResults = true;
-  recognition.continuous = false;
-  const micBtn = document.getElementById('mic-btn');
-  const status = document.getElementById('voice-status-text');
-  const transcript = document.getElementById('voice-transcript');
-  micBtn.classList.add('listening');
-  status.textContent = 'Listening…';
-  recognition.onresult = e => {
-    const t = Array.from(e.results).map(r=>r[0].transcript).join('');
-    transcript.textContent = '"' + t + '"';
-    if (e.results[e.results.length-1].isFinal) parseVoiceCommand(t);
-  };
-  recognition.onerror = () => { micBtn.classList.remove('listening'); status.textContent = 'Error — try again'; };
-  recognition.onend = () => { micBtn.classList.remove('listening'); status.textContent = 'Click mic to listen again'; };
-  recognition.start();
+  bar.style.display = bar.style.display === 'none' ? 'flex' : 'none';
+  // Show warning if no OpenAI key
+  const hasKey = !!(settings.openaiKey);
+  document.getElementById('voice-no-key').style.display = hasKey ? 'none' : 'block';
 }
 
-function parseVoiceCommand(text) {
+async function toggleRecording() {
+  if (isRecording) {
+    stopRecording();
+  } else {
+    await startRecording();
+  }
+}
+
+async function startRecording() {
+  const hasKey = !!(settings.openaiKey);
+  if (!hasKey) {
+    toast('Add your OpenAI API key in Settings first', 'error');
+    document.getElementById('settings-panel').classList.add('open');
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('Microphone not available on this device', 'error'); return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Pick best supported format — iOS Safari supports audio/mp4, others prefer webm
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus'
+      : MediaRecorder.isTypeSupported('audio/mp4')
+      ? 'audio/mp4'
+      : 'audio/ogg';
+    mediaRecorder = new MediaRecorder(stream, { mimeType });
+    audioChunks = [];
+    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) audioChunks.push(e.data); };
+    mediaRecorder.onstop = () => { stream.getTracks().forEach(t => t.stop()); processAudio(); };
+    mediaRecorder.start(250);
+    isRecording = true;
+    recordingSeconds = 0;
+    // UI
+    document.getElementById('mic-btn').classList.add('listening');
+    document.getElementById('mic-icon').style.display = 'none';
+    document.getElementById('stop-icon').style.display = 'block';
+    document.getElementById('voice-status-text').textContent = 'Recording… tap stop when done.';
+    document.getElementById('voice-transcript').textContent = '';
+    recordingTimer = setInterval(() => {
+      recordingSeconds++;
+      document.getElementById('voice-timer').textContent = recordingSeconds + 's';
+      if (recordingSeconds >= 60) stopRecording(); // auto-stop at 60s
+    }, 1000);
+  } catch (err) {
+    toast('Microphone access denied — check Safari settings', 'error');
+  }
+}
+
+function stopRecording() {
+  if (!isRecording || !mediaRecorder) return;
+  clearInterval(recordingTimer);
+  mediaRecorder.stop();
+  isRecording = false;
+  document.getElementById('mic-btn').classList.remove('listening');
+  document.getElementById('mic-icon').style.display = 'block';
+  document.getElementById('stop-icon').style.display = 'none';
+  document.getElementById('voice-status-text').textContent = 'Transcribing…';
+  document.getElementById('voice-timer').textContent = '0s';
+}
+
+async function processAudio() {
+  const mimeType = audioChunks[0]?.type || 'audio/webm';
+  const ext = mimeType.includes('mp4') ? 'mp4' : mimeType.includes('ogg') ? 'ogg' : 'webm';
+  const blob = new Blob(audioChunks, { type: mimeType });
+  const formData = new FormData();
+  formData.append('file', blob, 'voice.' + ext);
+  formData.append('model', 'whisper-1');
+  formData.append('language', 'en');
+  formData.append('prompt', 'Reminder app. Categories: Personal, Office, Health, Finance. User may say priority and date.');
+  try {
+    const res = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + settings.openaiKey },
+      body: formData
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message || 'Whisper API error');
+    }
+    const data = await res.json();
+    const transcript = data.text || '';
+    document.getElementById('voice-transcript').textContent = '"' + transcript + '"';
+    document.getElementById('voice-status-text').textContent = 'Parsing with Claude…';
+    await parseWithClaude(transcript);
+  } catch (err) {
+    document.getElementById('voice-status-text').textContent = 'Transcription failed — try again';
+    toast('Voice error: ' + err.message, 'error');
+  }
+}
+
+async function parseWithClaude(transcript) {
+  const reminderList = reminders.slice(0,10).map(r=>`- [${r.id}] "${r.title}" (${r.cat}, ${r.status})`).join('\n');
+  const prompt = `You are a reminder parser. Given this spoken input, extract structured data.
+
+Existing reminders for context (for status updates):
+${reminderList}
+
+Spoken input: "${transcript}"
+
+Today is ${new Date().toDateString()}. Current time: ${new Date().toLocaleTimeString('en-GB')}.
+
+Respond ONLY with a JSON object (no markdown, no explanation):
+{
+  "action": "add" or "update",
+  "title": "cleaned reminder title",
+  "note": "any extra detail or empty string",
+  "cat": "Personal" | "Office" | "Health" | "Finance",
+  "subcat": "detected subcategory or empty string",
+  "priority": "high" | "medium" | "low",
+  "status": "pending" | "inprogress" | "done" | "cancelled",
+  "end": "ISO8601 datetime or null",
+  "updateId": null or reminder id number (for status updates only)
+}`;
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+    const raw = data.content?.[0]?.text || '';
+    const clean = raw.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(clean);
+
+    if (parsed.action === 'update' && parsed.updateId) {
+      const r = reminders.find(r => r.id === parsed.updateId);
+      if (r) {
+        r.status = parsed.status;
+        save(); render();
+        toast(`"${r.title}" updated to ${parsed.status}`, 'success');
+        document.getElementById('voice-status-text').textContent = 'Status updated ✓ Tap mic to add another.';
+        return;
+      }
+    }
+    // Pre-fill add form
+    document.getElementById('f-title').value = parsed.title || '';
+    document.getElementById('f-note').value = parsed.note || '';
+    document.getElementById('f-cat').value = parsed.cat || 'Personal';
+    document.getElementById('f-subcat').value = parsed.subcat || '';
+    document.getElementById('f-pri').value = parsed.priority || 'medium';
+    document.getElementById('f-status').value = parsed.status || 'pending';
+    document.getElementById('f-end').value = parsed.end ? parsed.end.slice(0,16) : '';
+    document.getElementById('panel-mode-title').textContent = 'New Reminder (from voice)';
+    document.getElementById('add-panel').classList.add('open');
+    document.getElementById('voice-status-text').textContent = 'Parsed ✓ Review & save below — or tap mic again.';
+    toast('Voice parsed — review the form below', 'success');
+  } catch(err) {
+    // Fallback to local parsing if Claude fails
+    parseVoiceCommandLocal(transcript);
+  }
+}
+
+function parseVoiceCommandLocal(text) {
   const t = text.toLowerCase();
-  // Category detection
   let cat = 'Personal';
   if (t.includes('office')||t.includes('work')||t.includes('meeting')||t.includes('team')) cat='Office';
   else if (t.includes('health')||t.includes('doctor')||t.includes('gym')||t.includes('medicine')) cat='Health';
   else if (t.includes('finance')||t.includes('bank')||t.includes('money')||t.includes('pay')||t.includes('invoice')||t.includes('portfolio')) cat='Finance';
-  // Priority
   let pri = 'medium';
   if (t.includes('urgent')||t.includes('high priority')||t.includes('important')) pri='high';
   else if (t.includes('low priority')||t.includes('whenever')) pri='low';
-  // Status update detection
-  if (t.includes('mark') || t.includes('update') || t.includes('set')) {
+  if (t.includes('mark')||t.includes('update')||t.includes('set')) {
     let newStatus = null;
     if (t.includes('done')||t.includes('complete')) newStatus='done';
     else if (t.includes('progress')||t.includes('working')) newStatus='inprogress';
     else if (t.includes('cancel')) newStatus='cancelled';
     if (newStatus) {
-      // try to match a reminder by keyword
       const words = text.replace(/mark|update|set|as|to|done|complete|in progress|working|cancel/gi,'').trim().split(' ').filter(w=>w.length>3);
       const match = reminders.find(r=>words.some(w=>r.title.toLowerCase().includes(w)));
       if (match) { match.status=newStatus; save(); render(); toast(`"${match.title}" marked as ${newStatus}`,'success'); return; }
     }
   }
-  // End date detection
   let end = null;
   const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate()+1); tomorrow.setHours(9,0,0,0);
   const tonight = new Date(); tonight.setHours(20,0,0,0);
@@ -908,31 +1054,23 @@ function parseVoiceCommand(text) {
   else if (t.includes('tonight')||t.includes('this evening')) end = tonight.toISOString();
   else if (t.includes('next week')) end = nextWeek.toISOString();
   else if (t.includes('today')) { const td=new Date(); td.setHours(17,0,0,0); end=td.toISOString(); }
-  // Time parsing
   const timeMatch = t.match(/(\d{1,2})(?::(\d{2}))?\s*(am|pm)/);
   if (timeMatch && end) {
     const d=new Date(end); let h=parseInt(timeMatch[1]);
     if (timeMatch[3]==='pm'&&h<12) h+=12;
     if (timeMatch[3]==='am'&&h===12) h=0;
-    d.setHours(h, parseInt(timeMatch[2]||0), 0, 0);
-    end=d.toISOString();
+    d.setHours(h, parseInt(timeMatch[2]||0), 0, 0); end=d.toISOString();
   }
-  // Clean up title
-  const cleaned = text
-    .replace(/remind me to|reminder|tomorrow|tonight|today|next week|at \d{1,2}(:\d{2})?\s*(am|pm)?/gi,'')
-    .replace(/personal|office|health|finance|work|meeting|high priority|low priority|urgent|important/gi,'')
-    .replace(/\s+/g,' ').trim();
-  const title = cleaned.charAt(0).toUpperCase() + cleaned.slice(1);
-  // Pre-fill form
-  document.getElementById('f-title').value = title;
+  const cleaned = text.replace(/remind me to|reminder|tomorrow|tonight|today|next week|at \d{1,2}(:\d{2})?\s*(am|pm)?/gi,'').replace(/personal|office|health|finance|work|meeting|high priority|low priority|urgent|important/gi,'').replace(/\s+/g,' ').trim();
+  document.getElementById('f-title').value = cleaned.charAt(0).toUpperCase()+cleaned.slice(1);
   document.getElementById('f-cat').value = cat;
   document.getElementById('f-pri').value = pri;
   document.getElementById('f-end').value = end ? end.slice(0,16) : '';
   document.getElementById('f-status').value = 'pending';
   document.getElementById('panel-mode-title').textContent = 'New Reminder (from voice)';
   document.getElementById('add-panel').classList.add('open');
-  document.getElementById('voice-status-text').textContent = 'Parsed! Review and save ↓';
-  toast('Voice command parsed — review below','success');
+  document.getElementById('voice-status-text').textContent = 'Parsed (offline) — review below.';
+  toast('Voice command parsed — review below', 'success');
 }
 
 // ─── Settings ──────────────────────────────────────────────
@@ -943,6 +1081,7 @@ function toggleSettings() {
   if (settings.emailTime) document.getElementById('cfg-email-time').value=settings.emailTime;
   if (settings.phone) document.getElementById('cfg-phone').value=settings.phone;
   if (settings.webhookUrl) document.getElementById('cfg-webhook').value=settings.webhookUrl;
+  if (settings.openaiKey) document.getElementById('cfg-openai').value=settings.openaiKey;
   if (settings.sendgrid) document.getElementById('cfg-sendgrid').value=settings.sendgrid;
   if (settings.twilioSid) document.getElementById('cfg-twilio-sid').value=settings.twilioSid;
   if (settings.twilioAuth) document.getElementById('cfg-twilio-auth').value=settings.twilioAuth;
@@ -950,6 +1089,7 @@ function toggleSettings() {
 }
 function saveSettings() {
   settings = {
+    openaiKey: document.getElementById('cfg-openai').value,
     email: document.getElementById('cfg-email').value,
     emailTime: document.getElementById('cfg-email-time').value,
     phone: document.getElementById('cfg-phone').value,
