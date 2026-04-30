@@ -4823,7 +4823,7 @@ async function fbWrite(docId, data) {
     throw new Error(`${docId} payload too large (${sizeKB}KB) — remove photos or reduce data`);
   }
 
-  const url = FIREBASE_BASE + '/farmdesk/' + docId + (authIdToken ? '' : '?key=' + FIREBASE_API_KEY);
+  const url = FIREBASE_BASE + '/farmdesk/' + docId + '?key=' + FIREBASE_API_KEY;
   const body = {
     fields: {
       json:      { stringValue: jsonStr },
@@ -4844,7 +4844,7 @@ async function fbWrite(docId, data) {
 }
 
 async function fbRead(docId) {
-  const url = FIREBASE_BASE + '/farmdesk/' + docId + (authIdToken ? '' : '?key=' + FIREBASE_API_KEY);
+  const url = FIREBASE_BASE + '/farmdesk/' + docId + '?key=' + FIREBASE_API_KEY;
   const res = await fetch(url, { headers: await getAuthHeaders() });
   if (!res.ok) return null;
   const doc = await res.json();
